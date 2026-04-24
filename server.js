@@ -25,6 +25,18 @@ function fubHeaders() {
   };
 }
 
+app.get('/people', async (req, res) => {
+  try {
+    const search = await fetch(`${FUB_BASE}/people?limit=100`, {
+      headers: fubHeaders()
+    });
+    const data = await search.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/parse-and-update', async (req, res) => {
   try {
     const { message } = req.body;
@@ -32,6 +44,7 @@ app.post('/parse-and-update', async (req, res) => {
 
     const today = new Date().toISOString().split('T')[0];
 
+    // Step 1: Call Claude to parse the message
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -40,7 +53,7 @@ app.post('/parse-and-update', async (req, res) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-model: 'claude-sonnet-4-5',
+        model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         system: `You are a CRM assistant for a real estate agent. Parse natural language CRM updates and return ONLY a JSON object. No preamble, no markdown, no backticks.
 
@@ -70,61 +83,81 @@ Rules:
     });
 
     const claudeData = await claudeRes.json();
-if (!claudeData.content) {
-  return res.status(500).json({ error: 'Claude API error: ' + JSON.stringify(claudeData) });
-}
-const rawText = claudeData.content.map(b => b.text || '').join('');    let parsed;
+
+    if (!claudeData.content) {
+      return res.status(500).json({ error: 'Claude API error: ' + JSON.stringify(claudeData) });
+    }
+
+    const rawText = claudeData.content.map(b => b.text || '').join('');
+    let parsed;
     try {
       parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
     } catch(e) {
       return res.status(500).json({ error: 'Could not parse AI response. Try rephrasing.' });
     }
 
-const search = await fetch(`${FUB_BASE}/people?limit=100`, {
-  headers: fubHeaders()
-});
-const searchData = await search.json();
-const allPeople = searchData.people || [];
+    // Step 2: Fetch all contacts and find a match
+    const search = await fetch(`${FUB_BASE}/people?limit=100`, {
+      headers: fubHeaders()
+    });
+    const searchData = await search.json();
+    const allPeople = searchData.people || [];
 
-const nameLower = parsed.contact_name.toLowerCase();
-const match = allPeople.find(p =>
-  p.name.toLowerCase().includes(nameLower) ||
-  nameLower.includes(p.firstName.toLowerCase())
-);
+    const nameLower = parsed.contact_name.toLowerCase().trim();
 
-if (!match) {
-  return res.status(404).json({ error: `No contact found for "${parsed.contact_name}"` });
-}
+    const match =
+      allPeople.find(p => p.name.toLowerCase().trim() === nameLower) ||
+      allPeople.find(p => p.name.toLowerCase().trim().includes(nameLower)) ||
+      allPeople.find(p => nameLower.includes(p.firstName.toLowerCase().trim()));
 
-const personId = match.id;
-const personName = match.name;
+    if (!match) {
+      return res.status(404).json({
+        error: `No contact found for "${parsed.contact_name}". Contacts in FUB: ${allPeople.map(p => p.name).join(', ')}`
+      });
+    }
+
+    const personId = match.id;
+    const personName = match.name;
     const results = [];
 
+    // Step 3: Execute each action
     for (const action of parsed.actions) {
       if (action.type === 'note') {
         const r = await fetch(`${FUB_BASE}/notes`, {
-          method: 'POST', headers: fubHeaders(),
+          method: 'POST',
+          headers: fubHeaders(),
           body: JSON.stringify({ personId, body: action.content })
         });
+        const data = await r.json();
         results.push({ type: 'note', ok: r.ok, content: action.content });
+
       } else if (action.type === 'task') {
         const body = { personId, name: action.content };
         if (action.due_date) body.dueDate = action.due_date;
         const r = await fetch(`${FUB_BASE}/tasks`, {
-          method: 'POST', headers: fubHeaders(),
+          method: 'POST',
+          headers: fubHeaders(),
           body: JSON.stringify(body)
         });
         results.push({ type: 'task', ok: r.ok, content: action.content, due: action.due_date });
+
       } else if (action.type === 'status') {
         const r = await fetch(`${FUB_BASE}/people/${personId}`, {
-          method: 'PUT', headers: fubHeaders(),
+          method: 'PUT',
+          headers: fubHeaders(),
           body: JSON.stringify({ stage: action.status })
         });
         results.push({ type: 'status', ok: r.ok, content: action.status });
+
       } else if (action.type === 'call') {
         const r = await fetch(`${FUB_BASE}/calls`, {
-          method: 'POST', headers: fubHeaders(),
-          body: JSON.stringify({ personId, note: action.content, duration: action.duration_minutes ? action.duration_minutes * 60 : null })
+          method: 'POST',
+          headers: fubHeaders(),
+          body: JSON.stringify({
+            personId,
+            note: action.content,
+            duration: action.duration_minutes ? action.duration_minutes * 60 : null
+          })
         });
         results.push({ type: 'call', ok: r.ok, content: action.content });
       }
@@ -137,13 +170,6 @@ const personName = match.name;
   }
 });
 
-app.get('/people', async (req, res) => {
-  const search = await fetch(`${FUB_BASE}/people?limit=100`, {
-    headers: fubHeaders()
-  });
-  const data = await search.json();
-  res.json(data);
-});
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 const PORT = process.env.PORT || 3000;
