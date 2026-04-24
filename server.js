@@ -80,8 +80,9 @@ const rawText = claudeData.content.map(b => b.text || '').join('');    let parse
       return res.status(500).json({ error: 'Could not parse AI response. Try rephrasing.' });
     }
 
-    const search = await fetch(`${FUB_BASE}/people?name=${encodeURIComponent(parsed.contact_name)}&limit=5`, {
-      headers: fubHeaders()
+const firstName = parsed.contact_name.split(' ')[0];
+const search = await fetch(`${FUB_BASE}/people?name=${encodeURIComponent(firstName)}&limit=5`, {
+  headers: fubHeaders()
     });
     const searchData = await search.json();
     const people = searchData.people || [];
