@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FUB Assistant</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9f9f9; min-height: 100vh; display: flex; justify-content: center; padding: 2rem 1rem; }
+    .app { width: 100%; max-width: 640px; }
+    h1 { font-size: 20px; font-weight: 600; color: #111; margin-bottom: 4px; }
+    .subtitle { font-size: 14px; color: #888; margin-bottom: 1.5rem; }
+    .server-tag { font-size: 12px; color: #22c55e; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 6px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; }
+    .examples-label { font-size: 12px; color: #888; margin-bottom: 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem; }
+    .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid #e0e0e0; cursor: pointer; color: #555; background: #fff; transition: background 0.15s; }
+    .chip:hover { background: #f0f0f0; }
+    .compose { border: 1px solid #e0e0e0; border-radius: 12px; background: #fff; padding: 14px; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+    textarea { width: 100%; border: none; outline: none; resize: none; font-size: 15px; font-family: inherit; color: #111; background: transparent; min-height: 90px; line-height: 1.6; }
+    .compose-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; border-top: 1px solid #f0f0f0; padding-top: 10px; }
+    .char-count { font-size: 12px; color: #bbb; }
+    .send-btn { padding: 8px 20px; font-size: 14px; font-weight: 600; background: #111; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.15s; }
+    .send-btn:hover { opacity: 0.85; }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .log { display: flex; flex-direction: column; gap: 10px; }
+    .log-item { border-radius: 10px; padding: 12px 14px; border: 1px solid #e0e0e0; font-size: 13px; background: #fff; }
+    .log-item.pending { background: #f9f9f9; color: #888; }
+    .log-item.success { border-color: #86efac; background: #f0fdf4; }
+    .log-item.error { border-color: #fca5a5; background: #fff1f2; }
+    .log-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .log-msg { font-size: 13px; color: #888; font-style: italic; flex: 1; line-height: 1.5; }
+    .log-time { font-size: 11px; color: #bbb; white-space: nowrap; }
+    .person-name { font-size: 13px; font-weight: 600; color: #111; margin: 6px 0 4px; }
+    .action-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+    .badge.note { background: #fef9c3; color: #854d0e; }
+    .badge.task { background: #dcfce7; color: #166534; }
+    .badge.status { background: #dbeafe; color: #1e40af; }
+    .badge.call { background: #f3f4f6; color: #374151; }
+    .action-detail { font-size: 12px; color: #555; }
+    .summary { font-size: 12px; color: #888; margin-top: 6px; }
+    .error-msg { font-size: 13px; color: #dc2626; margin-top: 4px; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #e0e0e0; border-top-color: #111; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 480px) { body { padding: 1rem 0.75rem; } h1 { font-size: 18px; } }
+  </style>
+</head>
+<body>
+<div class="app">
+  <h1>FUB Assistant</h1>
+  <p class="subtitle">Type naturally — updates go straight to Follow Up Boss</p>
+  <div class="server-tag"><span class="dot"></span> Connected · fub-assistant.onrender.com</div>
+
+  <div class="examples-label">Try saying something like...</div>
+  <div class="chips">
+    <span class="chip" onclick="fillExample(this)">Add note to Connie Spencer: called today, waiting on contract</span>
+    <span class="chip" onclick="fillExample(this)">Update Jackson's stage to Active</span>
+    <span class="chip" onclick="fillExample(this)">Create task for Cooper: follow up Friday re: St. George property</span>
+    <span class="chip" onclick="fillExample(this)">Log call with Dawson, 10 mins, discussed financing options</span>
+    <span class="chip" onclick="fillExample(this)">Add note to Tyson: sent listing agreement, awaiting signature</span>
+  </div>
+
+  <div class="compose">
+    <textarea id="msgInput" placeholder="Who did you talk to? What happened? Any tasks or follow-ups?" oninput="updateChar()"></textarea>
+    <div class="compose-footer">
+      <span class="char-count" id="charCount">0 characters</span>
+      <button class="send-btn" id="sendBtn" onclick="sendUpdate()">Send to FUB ↗</button>
+    </div>
+  </div>
+
+  <div id="log" class="log"></div>
+</div>
+
+<script>
+  const SERVER = 'https://fub-assistant.onrender.com';
+
+  function fillExample(el) {
+    document.getElementById('msgInput').value = el.textContent.trim();
+    updateChar();
+    document.getElementById('msgInput').focus();
+  }
+
+  function updateChar() {
+    const len = document.getElementById('msgInput').value.length;
+    document.getElementById('charCount').textContent = len + ' characters';
+  }
+
+  function timeStr() {
+    return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  async function sendUpdate() {
+    const msg = document.getElementById('msgInput').value.trim();
+    if (!msg) return;
+
+    document.getElementById('sendBtn').disabled = true;
+
+    const logEl = document.getElementById('log');
+    const item = document.createElement('div');
+    item.className = 'log-item pending';
+    item.innerHTML = `
+      <div class="log-top">
+        <span class="log-msg">"${msg}"</span>
+        <span class="log-time">${timeStr()}</span>
+      </div>
+      <div style="margin-top:4px;font-size:12px;"><span class="spinner"></span> Sending...</div>`;
+    logEl.prepend(item);
+
+    try {
+      const r = await fetch(`${SERVER}/parse-and-update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg })
+      });
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Something went wrong');
+
+      const { personName, parsed, results } = data;
+
+      let actionsHtml = results.map(a => `
+        <div class="action-row">
+          <span class="badge ${a.type}">${a.type}</span>
+          <span class="action-detail">${a.content}${a.due ? ' · due ' + a.due : ''} ✓</span>
+        </div>`).join('');
+
+      item.className = 'log-item success';
+      item.innerHTML = `
+        <div class="log-top">
+          <span class="log-msg">"${msg}"</span>
+          <span class="log-time">${timeStr()}</span>
+        </div>
+        <div class="person-name">${personName}</div>
+        ${actionsHtml}
+        <div class="summary">${parsed.summary}</div>`;
+
+    } catch(err) {
+      item.className = 'log-item error';
+      item.innerHTML = `
+        <div class="log-top">
+          <span class="log-msg">"${msg}"</span>
+          <span class="log-time">${timeStr()}</span>
+        </div>
+        <div class="error-msg">${err.message}</div>`;
+    }
+
+    document.getElementById('msgInput').value = '';
+    updateChar();
+    document.getElementById('sendBtn').disabled = false;
+  }
+</script>
+</body>
+</html>
