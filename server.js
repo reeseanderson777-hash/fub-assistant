@@ -70,8 +70,10 @@ Rules:
     });
 
     const claudeData = await claudeRes.json();
-    const rawText = claudeData.content.map(b => b.text || '').join('');
-    let parsed;
+if (!claudeData.content) {
+  return res.status(500).json({ error: 'Claude API error: ' + JSON.stringify(claudeData) });
+}
+const rawText = claudeData.content.map(b => b.text || '').join('');    let parsed;
     try {
       parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
     } catch(e) {
