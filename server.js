@@ -40,7 +40,7 @@ app.post('/parse-and-update', async (req, res) => {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         system: `You are a CRM assistant for a real estate agent. Parse natural language CRM updates and return ONLY a JSON object. No preamble, no markdown, no backticks.
 
