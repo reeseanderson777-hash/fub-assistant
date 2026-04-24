@@ -1,8 +1,10 @@
 const express = require('express');
 const fetch = require('node-fetch');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
+
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
@@ -60,7 +62,7 @@ Return this structure:
 Rules:
 - contact_name must be extracted from the message
 - actions array can have multiple items if multiple things are requested
-- For tasks, extract any due date mentioned — today is ${today}
+- For tasks, extract any due date mentioned - today is ${today}
 - For status updates, map to one of the valid FUB stages listed above
 - Always include a short human-readable summary`,
         messages: [{ role: 'user', content: message }]
@@ -126,5 +128,8 @@ Rules:
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+
 const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'));
+app.listen(PORT, () => console.log(`Running on port ${PORT}`));
