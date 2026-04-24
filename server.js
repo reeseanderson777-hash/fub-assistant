@@ -137,6 +137,13 @@ const personName = match.name;
   }
 });
 
+app.get('/people', async (req, res) => {
+  const search = await fetch(`${FUB_BASE}/people?limit=100`, {
+    headers: fubHeaders()
+  });
+  const data = await search.json();
+  res.json(data);
+});
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 const PORT = process.env.PORT || 3000;
