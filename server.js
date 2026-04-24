@@ -80,19 +80,24 @@ const rawText = claudeData.content.map(b => b.text || '').join('');    let parse
       return res.status(500).json({ error: 'Could not parse AI response. Try rephrasing.' });
     }
 
-const firstName = parsed.contact_name.split(' ')[0];
-const search = await fetch(`${FUB_BASE}/people?name=${encodeURIComponent(firstName)}&limit=5`, {
+const search = await fetch(`${FUB_BASE}/people?limit=100`, {
   headers: fubHeaders()
-    });
-    const searchData = await search.json();
-    const people = searchData.people || [];
+});
+const searchData = await search.json();
+const allPeople = searchData.people || [];
 
-    if (people.length === 0) {
-      return res.status(404).json({ error: `No contact found for "${parsed.contact_name}"` });
-    }
+const nameLower = parsed.contact_name.toLowerCase();
+const match = allPeople.find(p =>
+  p.name.toLowerCase().includes(nameLower) ||
+  nameLower.includes(p.firstName.toLowerCase())
+);
 
-    const personId = people[0].id;
-    const personName = people[0].name;
+if (!match) {
+  return res.status(404).json({ error: `No contact found for "${parsed.contact_name}"` });
+}
+
+const personId = match.id;
+const personName = match.name;
     const results = [];
 
     for (const action of parsed.actions) {
