@@ -126,8 +126,5 @@ Rules:
     res.status(500).json({ error: err.message });
   }
 });
-
-app.get('/', (req, res) => res.send('FUB Assistant server is running.'));
-
 const PORT = process.env.PORT || 3000;
 app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'));
