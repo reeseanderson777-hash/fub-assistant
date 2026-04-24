@@ -130,4 +130,4 @@ Rules:
 app.get('/', (req, res) => res.send('FUB Assistant server is running.'));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Running on port ${PORT}`));
+app.get('/', (req, res) => res.sendFile(__dirname + '/index.html'));
