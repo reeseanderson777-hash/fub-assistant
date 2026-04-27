@@ -25,12 +25,42 @@ function fubHeaders() {
   };
 }
 
+// Get all people
 app.get('/people', async (req, res) => {
   try {
-    const search = await fetch(`${FUB_BASE}/people?limit=100`, {
-      headers: fubHeaders()
+    const r = await fetch(`${FUB_BASE}/people?limit=100`, { headers: fubHeaders() });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get all users (for collaborators)
+app.get('/users', async (req, res) => {
+  try {
+    const r = await fetch(`${FUB_BASE}/users`, { headers: fubHeaders() });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create a new contact
+app.post('/people', async (req, res) => {
+  try {
+    const { name, phone, email, type, source } = req.body;
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const body = { firstName, lastName, type: type || 'Buyer', source: source || 'Manual Entry' };
+    if (phone) body.phones = [{ value: phone, type: 'mobile' }];
+    if (email) body.emails = [{ value: email, type: 'home' }];
+    const r = await fetch(`${FUB_BASE}/people`, {
+      method: 'POST', headers: fubHeaders(), body: JSON.stringify(body)
     });
-    const data = await search.json();
+    const data = await r.json();
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -43,8 +73,9 @@ app.post('/parse-and-update', async (req, res) => {
     if (!message) return res.status(400).json({ error: 'No message provided' });
 
     const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
 
-    // Step 1: Call Claude to parse the message
+    // Step 1: Parse with Claude
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -54,36 +85,47 @@ app.post('/parse-and-update', async (req, res) => {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 1000,
-        system: `You are a CRM assistant for a real estate agent. Parse natural language CRM updates and return ONLY a JSON object. No preamble, no markdown, no backticks.
+        max_tokens: 1500,
+        system: `You are a CRM assistant for a real estate agent named Reese. Parse natural language CRM updates and return ONLY a JSON object. No preamble, no markdown, no backticks.
 
 Return this structure:
 {
-  "contact_name": "first or full name mentioned",
+  "contact_name": "full name mentioned",
+  "create_new_contact": false,
+  "new_contact_phone": "phone number if creating new contact or null",
+  "new_contact_email": "email if creating new contact or null",
+  "new_contact_type": "Buyer or Seller if creating new contact or null",
   "actions": [
     {
-      "type": "note" | "task" | "status" | "call",
-      "content": "the note, task, or call description",
+      "type": "note" | "task" | "appointment" | "status" | "call" | "collaborator",
+      "content": "description of the note, task, or appointment",
       "due_date": "YYYY-MM-DD or null",
+      "due_time": "HH:MM in 24hr format or null",
+      "end_time": "HH:MM in 24hr format or null",
       "status": "Active | Attempting Contact | Under Contract | Closed | Nurture | Trash | Sold | Unqualified or null",
-      "duration_minutes": number or null
+      "duration_minutes": number or null,
+      "send_invite": true or false,
+      "collaborator_name": "first name of team member to add or null"
     }
   ],
   "summary": "one sentence summary of what will be done"
 }
 
 Rules:
-- contact_name must be extracted from the message
-- actions array can have multiple items if multiple things are requested
-- For tasks, extract any due date mentioned - today is ${today}
-- For status updates, map to one of the valid FUB stages listed above
+- If the message says 'new contact', 'new lead', or 'add contact', set create_new_contact to true
+- For appointments, always extract the date AND time if mentioned
+- end_time should be 1 hour after due_time if not specified
+- send_invite defaults to false unless user says 'send invite' or 'invite them'
+- collaborator_name should be first name only: Cooper, Dawson, Scott, Tyson, Jackson, or Reese
+- For status, map to one of the valid FUB stages
+- today is ${today}, current time is ${now}
+- Always extract stage updates even when mentioned alongside other actions
 - Always include a short human-readable summary`,
         messages: [{ role: 'user', content: message }]
       })
     });
 
     const claudeData = await claudeRes.json();
-
     if (!claudeData.content) {
       return res.status(500).json({ error: 'Claude API error: ' + JSON.stringify(claudeData) });
     }
@@ -96,74 +138,140 @@ Rules:
       return res.status(500).json({ error: 'Could not parse AI response. Try rephrasing.' });
     }
 
-    // Step 2: Fetch all contacts and find a match
-    const search = await fetch(`${FUB_BASE}/people?limit=100`, {
-      headers: fubHeaders()
-    });
-    const searchData = await search.json();
-    const allPeople = searchData.people || [];
+    // Step 2: Find or create contact
+    const allPeopleRes = await fetch(`${FUB_BASE}/people?limit=100`, { headers: fubHeaders() });
+    const allPeopleData = await allPeopleRes.json();
+    const allPeople = allPeopleData.people || [];
 
     const nameLower = parsed.contact_name.toLowerCase().trim();
+    let match = allPeople.find(p => p.name.toLowerCase().trim() === nameLower) ||
+                allPeople.find(p => p.name.toLowerCase().trim().includes(nameLower)) ||
+                allPeople.find(p => nameLower.includes(p.firstName.toLowerCase().trim()));
 
-    const match =
-      allPeople.find(p => p.name.toLowerCase().trim() === nameLower) ||
-      allPeople.find(p => p.name.toLowerCase().trim().includes(nameLower)) ||
-      allPeople.find(p => nameLower.includes(p.firstName.toLowerCase().trim()));
+    let personId, personName, wasCreated = false;
 
     if (!match) {
-      return res.status(404).json({
-        error: `No contact found for "${parsed.contact_name}". Contacts in FUB: ${allPeople.map(p => p.name).join(', ')}`
-      });
+      if (parsed.create_new_contact) {
+        // Create new contact
+        const nameParts = parsed.contact_name.trim().split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.slice(1).join(' ') || '';
+        const newBody = {
+          firstName, lastName,
+          type: parsed.new_contact_type || 'Buyer',
+          source: 'Manual Entry'
+        };
+        if (parsed.new_contact_phone) newBody.phones = [{ value: parsed.new_contact_phone, type: 'mobile' }];
+        if (parsed.new_contact_email) newBody.emails = [{ value: parsed.new_contact_email, type: 'home' }];
+        const createRes = await fetch(`${FUB_BASE}/people`, {
+          method: 'POST', headers: fubHeaders(), body: JSON.stringify(newBody)
+        });
+        const created = await createRes.json();
+        personId = created.id || created.person?.id;
+        personName = parsed.contact_name;
+        wasCreated = true;
+      } else {
+        return res.status(404).json({
+          error: `No contact found for "${parsed.contact_name}". Did you mean to create a new contact? Try saying "new contact: [name], [phone]".`,
+          suggestion: 'create_new',
+          contact_name: parsed.contact_name
+        });
+      }
+    } else {
+      personId = match.id;
+      personName = match.name;
     }
 
-    const personId = match.id;
-    const personName = match.name;
+    // Step 3: Get users list for collaborator lookup
+    const usersRes = await fetch(`${FUB_BASE}/users`, { headers: fubHeaders() });
+    const usersData = await usersRes.json();
+    const allUsers = usersData.users || [];
+
     const results = [];
 
-    // Step 3: Execute each action
+    // Step 4: Execute actions
     for (const action of parsed.actions) {
+
       if (action.type === 'note') {
         const r = await fetch(`${FUB_BASE}/notes`, {
-          method: 'POST',
-          headers: fubHeaders(),
+          method: 'POST', headers: fubHeaders(),
           body: JSON.stringify({ personId, body: action.content })
         });
-        const data = await r.json();
         results.push({ type: 'note', ok: r.ok, content: action.content });
 
       } else if (action.type === 'task') {
         const body = { personId, name: action.content };
-        if (action.due_date) body.dueDate = action.due_date;
+        if (action.due_date) {
+          body.dueDate = action.due_time
+            ? `${action.due_date}T${action.due_time}:00`
+            : action.due_date;
+        }
         const r = await fetch(`${FUB_BASE}/tasks`, {
-          method: 'POST',
-          headers: fubHeaders(),
-          body: JSON.stringify(body)
+          method: 'POST', headers: fubHeaders(), body: JSON.stringify(body)
         });
-        results.push({ type: 'task', ok: r.ok, content: action.content, due: action.due_date });
+        results.push({ type: 'task', ok: r.ok, content: action.content, due: action.due_date, time: action.due_time });
+
+      } else if (action.type === 'appointment') {
+        const startDateTime = action.due_date && action.due_time
+          ? `${action.due_date}T${action.due_time}:00`
+          : action.due_date ? `${action.due_date}T09:00:00` : null;
+
+        const endDateTime = action.due_date && action.end_time
+          ? `${action.due_date}T${action.end_time}:00`
+          : startDateTime ? startDateTime.replace(/T\d{2}/, m => `T${String(parseInt(m.slice(1)) + 1).padStart(2,'0')}`) : null;
+
+        const apptBody = {
+          personId,
+          title: action.content,
+          start: startDateTime,
+          end: endDateTime,
+          sendInvite: action.send_invite || false
+        };
+
+        const r = await fetch(`${FUB_BASE}/appointments`, {
+          method: 'POST', headers: fubHeaders(), body: JSON.stringify(apptBody)
+        });
+        const apptData = await r.json();
+        results.push({
+          type: 'appointment', ok: r.ok, content: action.content,
+          date: action.due_date, time: action.due_time,
+          invite: action.send_invite
+        });
 
       } else if (action.type === 'status') {
         const r = await fetch(`${FUB_BASE}/people/${personId}`, {
-          method: 'PUT',
-          headers: fubHeaders(),
+          method: 'PUT', headers: fubHeaders(),
           body: JSON.stringify({ stage: action.status })
         });
         results.push({ type: 'status', ok: r.ok, content: action.status });
 
       } else if (action.type === 'call') {
         const r = await fetch(`${FUB_BASE}/calls`, {
-          method: 'POST',
-          headers: fubHeaders(),
+          method: 'POST', headers: fubHeaders(),
           body: JSON.stringify({
-            personId,
-            note: action.content,
+            personId, note: action.content,
             duration: action.duration_minutes ? action.duration_minutes * 60 : null
           })
         });
         results.push({ type: 'call', ok: r.ok, content: action.content });
+
+      } else if (action.type === 'collaborator') {
+        const collab = allUsers.find(u =>
+          u.name.toLowerCase().includes(action.collaborator_name.toLowerCase())
+        );
+        if (collab) {
+          const r = await fetch(`${FUB_BASE}/people/${personId}`, {
+            method: 'PUT', headers: fubHeaders(),
+            body: JSON.stringify({ collaboratorIds: [collab.id] })
+          });
+          results.push({ type: 'collaborator', ok: r.ok, content: collab.name });
+        } else {
+          results.push({ type: 'collaborator', ok: false, content: `User "${action.collaborator_name}" not found` });
+        }
       }
     }
 
-    res.json({ success: true, personName, parsed, results });
+    res.json({ success: true, personName, wasCreated, parsed, results });
 
   } catch (err) {
     res.status(500).json({ error: err.message });
