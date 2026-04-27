@@ -25,10 +25,10 @@ function fubHeaders() {
   };
 }
 
-// Get all people
+// Debug: list people
 app.get('/people', async (req, res) => {
   try {
-    const r = await fetch(`${FUB_BASE}/people?limit=100`, { headers: fubHeaders() });
+    const r = await fetch(`${FUB_BASE}/people?limit=10`, { headers: fubHeaders() });
     const data = await r.json();
     res.json(data);
   } catch (err) {
@@ -36,7 +36,7 @@ app.get('/people', async (req, res) => {
   }
 });
 
-// Get all users (for collaborators)
+// Debug: get users
 app.get('/users', async (req, res) => {
   try {
     const r = await fetch(`${FUB_BASE}/users`, { headers: fubHeaders() });
@@ -47,14 +47,14 @@ app.get('/users', async (req, res) => {
   }
 });
 
-// Create a new contact
+// Create a new contact directly
 app.post('/people', async (req, res) => {
   try {
-    const { name, phone, email, type, source } = req.body;
+    const { name, phone, email, type } = req.body;
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
-    const body = { firstName, lastName, type: type || 'Buyer', source: source || 'Manual Entry' };
+    const body = { firstName, lastName, type: type || 'Buyer', source: 'Manual Entry' };
     if (phone) body.phones = [{ value: phone, type: 'mobile' }];
     if (email) body.emails = [{ value: email, type: 'home' }];
     const r = await fetch(`${FUB_BASE}/people`, {
@@ -112,10 +112,10 @@ Return this structure:
 }
 
 Rules:
-- If the message says 'new contact', 'new lead', or 'add contact', set create_new_contact to true
+- If the message says "new contact", "new lead", or "add contact", set create_new_contact to true
 - For appointments, always extract the date AND time if mentioned
 - end_time should be 1 hour after due_time if not specified
-- send_invite defaults to false unless user says 'send invite' or 'invite them'
+- send_invite defaults to false unless user says "send invite" or "invite them"
 - collaborator_name should be first name only: Cooper, Dawson, Scott, Tyson, Jackson, or Reese
 - For status, map to one of the valid FUB stages
 - today is ${today}, current time is ${now}
@@ -138,33 +138,28 @@ Rules:
       return res.status(500).json({ error: 'Could not parse AI response. Try rephrasing.' });
     }
 
-    // Step 2: Find or create contact
-  let allPeople = [];
-let nextCursor = null;
-do {
-  const url = nextCursor
-    ? `${FUB_BASE}/people?limit=100&next=${nextCursor}`
-    : `${FUB_BASE}/people?limit=100`;
-  const r = await fetch(url, { headers: fubHeaders() });
-  const data = await r.json();
-  allPeople = allPeople.concat(data.people || []);
-  nextCursor = data._metadata?.next || null;
-} while (nextCursor);
-    const nameLower = parsed.contact_name.toLowerCase().trim();
-    let match = allPeople.find(p => p.name.toLowerCase().trim() === nameLower) ||
-                allPeople.find(p => p.name.toLowerCase().trim().includes(nameLower)) ||
-                allPeople.find(p => nameLower.includes(p.firstName.toLowerCase().trim()));
+    // Step 2: Search for contact by first and last name
+    const nameParts = parsed.contact_name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ');
 
+    const searchUrl = lastName
+      ? `${FUB_BASE}/people?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&limit=10`
+      : `${FUB_BASE}/people?firstName=${encodeURIComponent(firstName)}&limit=10`;
+
+    const searchRes = await fetch(searchUrl, { headers: fubHeaders() });
+    const searchData = await searchRes.json();
+    const allPeople = searchData.people || [];
+
+    let match = allPeople[0] || null;
     let personId, personName, wasCreated = false;
 
     if (!match) {
       if (parsed.create_new_contact) {
         // Create new contact
-        const nameParts = parsed.contact_name.trim().split(' ');
-        const firstName = nameParts[0];
-        const lastName = nameParts.slice(1).join(' ') || '';
         const newBody = {
-          firstName, lastName,
+          firstName,
+          lastName,
           type: parsed.new_contact_type || 'Buyer',
           source: 'Manual Entry'
         };
@@ -179,7 +174,7 @@ do {
         wasCreated = true;
       } else {
         return res.status(404).json({
-          error: `No contact found for "${parsed.contact_name}". Did you mean to create a new contact? Try saying "new contact: [name], [phone]".`,
+          error: `No contact found for "${parsed.contact_name}". Try using their full name, or say "new contact: [name], [phone]" to create them.`,
           suggestion: 'create_new',
           contact_name: parsed.contact_name
         });
@@ -196,7 +191,7 @@ do {
 
     const results = [];
 
-    // Step 4: Execute actions
+    // Step 4: Execute each action
     for (const action of parsed.actions) {
 
       if (action.type === 'note') {
@@ -225,7 +220,13 @@ do {
 
         const endDateTime = action.due_date && action.end_time
           ? `${action.due_date}T${action.end_time}:00`
-          : startDateTime ? startDateTime.replace(/T\d{2}/, m => `T${String(parseInt(m.slice(1)) + 1).padStart(2,'0')}`) : null;
+          : startDateTime
+            ? (() => {
+                const d = new Date(startDateTime);
+                d.setHours(d.getHours() + 1);
+                return d.toISOString().slice(0, 19);
+              })()
+            : null;
 
         const apptBody = {
           personId,
@@ -238,7 +239,6 @@ do {
         const r = await fetch(`${FUB_BASE}/appointments`, {
           method: 'POST', headers: fubHeaders(), body: JSON.stringify(apptBody)
         });
-        const apptData = await r.json();
         results.push({
           type: 'appointment', ok: r.ok, content: action.content,
           date: action.due_date, time: action.due_time,
@@ -256,7 +256,8 @@ do {
         const r = await fetch(`${FUB_BASE}/calls`, {
           method: 'POST', headers: fubHeaders(),
           body: JSON.stringify({
-            personId, note: action.content,
+            personId,
+            note: action.content,
             duration: action.duration_minutes ? action.duration_minutes * 60 : null
           })
         });
