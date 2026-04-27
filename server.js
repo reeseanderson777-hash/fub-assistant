@@ -139,10 +139,17 @@ Rules:
     }
 
     // Step 2: Find or create contact
-    const allPeopleRes = await fetch(`${FUB_BASE}/people?limit=100`, { headers: fubHeaders() });
-    const allPeopleData = await allPeopleRes.json();
-    const allPeople = allPeopleData.people || [];
-
+  let allPeople = [];
+let nextCursor = null;
+do {
+  const url = nextCursor
+    ? `${FUB_BASE}/people?limit=100&next=${nextCursor}`
+    : `${FUB_BASE}/people?limit=100`;
+  const r = await fetch(url, { headers: fubHeaders() });
+  const data = await r.json();
+  allPeople = allPeople.concat(data.people || []);
+  nextCursor = data._metadata?.next || null;
+} while (nextCursor);
     const nameLower = parsed.contact_name.toLowerCase().trim();
     let match = allPeople.find(p => p.name.toLowerCase().trim() === nameLower) ||
                 allPeople.find(p => p.name.toLowerCase().trim().includes(nameLower)) ||
