@@ -25,8 +25,6 @@ function fubHeaders() {
   };
 }
 
-// Utah timezone offset: MDT is UTC-6, MST is UTC-7
-// Using -6 for MDT (April-October), change to -7 for winter
 const UTC_OFFSET = -6;
 
 function toUTC(date, time) {
@@ -38,7 +36,6 @@ function toUTC(date, time) {
   return d.toISOString().slice(0, 19);
 }
 
-// Debug: list people
 app.get('/people', async (req, res) => {
   try {
     const r = await fetch(`${FUB_BASE}/people?limit=10`, { headers: fubHeaders() });
@@ -49,7 +46,6 @@ app.get('/people', async (req, res) => {
   }
 });
 
-// Debug: get users
 app.get('/users', async (req, res) => {
   try {
     const r = await fetch(`${FUB_BASE}/users`, { headers: fubHeaders() });
@@ -60,7 +56,6 @@ app.get('/users', async (req, res) => {
   }
 });
 
-// Create a new contact directly
 app.post('/people', async (req, res) => {
   try {
     const { name, phone, email, type } = req.body;
@@ -80,6 +75,54 @@ app.post('/people', async (req, res) => {
   }
 });
 
+app.post('/debug-parse', async (req, res) => {
+  try {
+    const { message } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+    const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1500,
+        system: `You are a CRM assistant for a real estate agent named Reese. Parse natural language CRM updates and return ONLY a JSON object. No preamble, no markdown, no backticks.
+
+Return this structure:
+{
+  "contact_name": "full name mentioned",
+  "create_new_contact": false,
+  "new_contact_phone": "phone number if creating new contact or null",
+  "new_contact_email": "email if creating new contact or null",
+  "new_contact_type": "Buyer or Seller if creating new contact or null",
+  "actions": [],
+  "summary": "one sentence summary"
+}
+
+Rules:
+- If the message says "new contact", "new lead", "add contact", "create contact", or "create a new", set create_new_contact to true
+- today is ${today}, current time is ${now}`,
+        messages: [{ role: 'user', content: message }]
+      })
+    });
+    const data = await claudeRes.json();
+    const rawText = data.content.map(b => b.text || '').join('');
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText.replace(/```json|```/g, '').trim());
+    } catch(e) {
+      parsed = { raw: rawText, parseError: e.message };
+    }
+    res.json({ claudeRaw: rawText, parsed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/parse-and-update', async (req, res) => {
   try {
     const { message } = req.body;
@@ -88,7 +131,6 @@ app.post('/parse-and-update', async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const now = new Date().toISOString();
 
-    // Step 1: Parse with Claude
     const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -125,7 +167,7 @@ Return this structure:
 }
 
 Rules:
-- If the message says "new contact", "new lead", or "add contact", set create_new_contact to true
+- If the message says "new contact", "new lead", "add contact", "create contact", or "create a new", set create_new_contact to true
 - For appointments, always extract the date AND time if mentioned
 - end_time should be 1 hour after due_time if not specified
 - send_invite defaults to false unless user says "send invite" or "invite them"
@@ -151,31 +193,32 @@ Rules:
       return res.status(500).json({ error: 'Could not parse AI response. Try rephrasing.' });
     }
 
-    // Step 2: Search for contact by first and last name
+    const msgLower = message.toLowerCase();
+    const isNewContactRequest = parsed.create_new_contact ||
+      msgLower.includes('new contact') ||
+      msgLower.includes('create a new') ||
+      msgLower.includes('add a new') ||
+      msgLower.includes('create contact') ||
+      msgLower.includes('add contact');
+
     const nameParts = parsed.contact_name.trim().split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ');
 
-    const searchUrl = lastName
-      ? `${FUB_BASE}/people?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&limit=10`
-      : `${FUB_BASE}/people?firstName=${encodeURIComponent(firstName)}&limit=10`;
-
-    const searchRes = await fetch(searchUrl, { headers: fubHeaders() });
-    const searchData = await searchRes.json();
-    const allPeople = searchData.people || [];
-
-    let match = allPeople[0] || null;
+    let match = null;
     let personId, personName, wasCreated = false;
 
-  const msgLower = message.toLowerCase();
-const isNewContactRequest = parsed.create_new_contact ||
-  msgLower.includes('new contact') ||
-  msgLower.includes('create a new') ||
-  msgLower.includes('add a new') ||
-  msgLower.includes('create contact');
+    if (!isNewContactRequest) {
+      const searchUrl = lastName
+        ? `${FUB_BASE}/people?firstName=${encodeURIComponent(firstName)}&lastName=${encodeURIComponent(lastName)}&limit=10`
+        : `${FUB_BASE}/people?firstName=${encodeURIComponent(firstName)}&limit=10`;
+      const searchRes = await fetch(searchUrl, { headers: fubHeaders() });
+      const searchData = await searchRes.json();
+      match = (searchData.people || [])[0] || null;
+    }
 
-if (!match) {
-  if (isNewContactRequest) {
+    if (!match) {
+      if (isNewContactRequest) {
         const newBody = {
           firstName,
           lastName,
@@ -203,16 +246,12 @@ if (!match) {
       personName = match.name;
     }
 
-    // Step 3: Get users list for collaborator lookup
     const usersRes = await fetch(`${FUB_BASE}/users`, { headers: fubHeaders() });
     const usersData = await usersRes.json();
     const allUsers = usersData.users || [];
-
     const results = [];
 
-    // Step 4: Execute each action
     for (const action of parsed.actions) {
-
       if (action.type === 'note') {
         const r = await fetch(`${FUB_BASE}/notes`, {
           method: 'POST', headers: fubHeaders(),
@@ -253,19 +292,13 @@ if (!match) {
           end: endDateTime,
           timezone: 'America/Denver',
           allDay: false,
-          invitees: [
-            { personId: personId, userId: null, relationshipId: null }
-          ]
+          invitees: [{ personId: personId, userId: null, relationshipId: null }]
         };
 
         const r = await fetch(`${FUB_BASE}/appointments`, {
           method: 'POST', headers: fubHeaders(), body: JSON.stringify(apptBody)
         });
-        results.push({
-          type: 'appointment', ok: r.ok, content: action.content,
-          date: action.due_date, time: action.due_time,
-          invite: action.send_invite
-        });
+        results.push({ type: 'appointment', ok: r.ok, content: action.content, date: action.due_date, time: action.due_time, invite: action.send_invite });
 
       } else if (action.type === 'status') {
         const r = await fetch(`${FUB_BASE}/people/${personId}`, {
@@ -277,18 +310,12 @@ if (!match) {
       } else if (action.type === 'call') {
         const r = await fetch(`${FUB_BASE}/calls`, {
           method: 'POST', headers: fubHeaders(),
-          body: JSON.stringify({
-            personId,
-            note: action.content,
-            duration: action.duration_minutes ? action.duration_minutes * 60 : null
-          })
+          body: JSON.stringify({ personId, note: action.content, duration: action.duration_minutes ? action.duration_minutes * 60 : null })
         });
         results.push({ type: 'call', ok: r.ok, content: action.content });
 
       } else if (action.type === 'collaborator') {
-        const collab = allUsers.find(u =>
-          u.name.toLowerCase().includes(action.collaborator_name.toLowerCase())
-        );
+        const collab = allUsers.find(u => u.name.toLowerCase().includes(action.collaborator_name.toLowerCase()));
         if (collab) {
           const r = await fetch(`${FUB_BASE}/people/${personId}`, {
             method: 'PUT', headers: fubHeaders(),
@@ -307,11 +334,7 @@ if (!match) {
     res.status(500).json({ error: err.message });
   }
 });
-fetch('/debug-parse', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({message: 'create a new contact: buyer, ronald mcdonald, 1234567890'})
-}).then(r => r.json()).then(console.log)
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 const PORT = process.env.PORT || 3000;
