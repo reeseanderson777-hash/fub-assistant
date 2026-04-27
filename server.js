@@ -229,12 +229,15 @@ Rules:
             : null;
 
         const apptBody = {
-          personId,
-          title: action.content,
-          start: startDateTime,
-          end: endDateTime,
-          sendInvite: action.send_invite || false
-        };
+  title: action.content,
+  start: startDateTime,
+  end: endDateTime,
+  timezone: 'America/Denver',
+  allDay: false,
+  invitees: [
+    { personId: personId, userId: null, relationshipId: null }
+  ]
+};
 
         const r = await fetch(`${FUB_BASE}/appointments`, {
           method: 'POST', headers: fubHeaders(), body: JSON.stringify(apptBody)
