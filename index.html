@@ -6,106 +6,146 @@
   <title>FUB Assistant</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9f9f9; min-height: 100vh; display: flex; justify-content: center; padding: 2rem 1rem; }
-    .app { width: 100%; max-width: 640px; }
-    h1 { font-size: 20px; font-weight: 600; color: #111; margin-bottom: 4px; }
-    .subtitle { font-size: 14px; color: #888; margin-bottom: 1.5rem; }
-    .server-tag { font-size: 12px; color: #22c55e; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 6px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; min-height: 100vh; display: flex; justify-content: center; padding: 1.5rem 1rem; }
+    .app { width: 100%; max-width: 640px; display: flex; flex-direction: column; gap: 1rem; }
+    h1 { font-size: 20px; font-weight: 600; color: #111; }
+    .subtitle { font-size: 13px; color: #888; }
+    .server-tag { font-size: 12px; color: #22c55e; display: flex; align-items: center; gap: 6px; }
     .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; }
-    .examples-label { font-size: 12px; color: #888; margin-bottom: 8px; }
-    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem; }
-    .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid #e0e0e0; cursor: pointer; color: #555; background: #fff; transition: background 0.15s; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid #e0e0e0; cursor: pointer; color: #555; background: #fff; }
     .chip:hover { background: #f0f0f0; }
-    .compose { border: 1px solid #e0e0e0; border-radius: 12px; background: #fff; padding: 14px; margin-bottom: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
-    textarea { width: 100%; border: none; outline: none; resize: none; font-size: 15px; font-family: inherit; color: #111; background: transparent; min-height: 90px; line-height: 1.6; }
-    .compose-footer { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; border-top: 1px solid #f0f0f0; padding-top: 10px; }
-    .char-count { font-size: 12px; color: #bbb; }
-    .send-btn { padding: 8px 20px; font-size: 14px; font-weight: 600; background: #111; color: #fff; border: none; border-radius: 8px; cursor: pointer; transition: opacity 0.15s; }
-    .send-btn:hover { opacity: 0.85; }
-    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    .log { display: flex; flex-direction: column; gap: 10px; }
-    .log-item { border-radius: 10px; padding: 12px 14px; border: 1px solid #e0e0e0; font-size: 13px; background: #fff; }
+    .log { display: flex; flex-direction: column; gap: 8px; }
+    .log-item { border-radius: 12px; padding: 12px 14px; border: 1px solid #e0e0e0; font-size: 13px; background: #fff; }
     .log-item.pending { background: #f9f9f9; color: #888; }
     .log-item.success { border-color: #86efac; background: #f0fdf4; }
     .log-item.error { border-color: #fca5a5; background: #fff1f2; }
-    .log-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+    .log-top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
     .log-msg { font-size: 13px; color: #888; font-style: italic; flex: 1; line-height: 1.5; }
     .log-time { font-size: 11px; color: #bbb; white-space: nowrap; }
-    .person-name { font-size: 13px; font-weight: 600; color: #111; margin: 6px 0 4px; }
-    .action-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+    .person-name { font-size: 13px; font-weight: 600; color: #111; margin: 4px 0; }
+    .new-badge { font-size: 11px; background: #dbeafe; color: #1e40af; padding: 1px 7px; border-radius: 8px; margin-left: 6px; }
+    .action-row { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 3px; }
     .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
     .badge.note { background: #fef9c3; color: #854d0e; }
     .badge.task { background: #dcfce7; color: #166534; }
+    .badge.appointment { background: #ede9fe; color: #6d28d9; }
     .badge.status { background: #dbeafe; color: #1e40af; }
     .badge.call { background: #f3f4f6; color: #374151; }
-    .action-detail { font-size: 12px; color: #555; }
+    .badge.collaborator { background: #fce7f3; color: #9d174d; }
+    .action-detail { font-size: 12px; color: #555; line-height: 1.5; }
     .summary { font-size: 12px; color: #888; margin-top: 6px; }
     .error-msg { font-size: 13px; color: #dc2626; margin-top: 4px; }
-    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #e0e0e0; border-top-color: #111; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; }
+    .create-prompt { margin-top: 8px; padding: 10px 12px; background: #eff6ff; border-radius: 8px; border: 1px solid #bfdbfe; }
+    .create-prompt p { font-size: 13px; color: #1e40af; margin-bottom: 8px; }
+    .create-prompt input { width: 100%; padding: 6px 10px; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 13px; margin-bottom: 6px; outline: none; }
+    .create-prompt .btn-row { display: flex; gap: 8px; }
+    .btn-sm { padding: 6px 14px; font-size: 13px; border-radius: 8px; border: none; cursor: pointer; font-weight: 500; }
+    .btn-primary { background: #111; color: #fff; }
+    .btn-cancel { background: #e5e7eb; color: #374151; }
+    .compose-wrap { position: sticky; bottom: 0; background: #f5f5f7; padding: 0.75rem 0 0; }
+    .compose { display: flex; gap: 8px; align-items: flex-end; border: 1px solid #d1d5db; border-radius: 16px; padding: 10px 14px; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    textarea { flex: 1; border: none; outline: none; resize: none; font-size: 15px; font-family: inherit; color: #111; background: transparent; max-height: 120px; min-height: 24px; line-height: 1.5; }
+    .send-btn { width: 34px; height: 34px; border-radius: 50%; background: #111; color: #fff; border: none; cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .send-btn:disabled { opacity: 0.3; }
+    .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #ccc; border-top-color: #333; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (max-width: 480px) { body { padding: 1rem 0.75rem; } h1 { font-size: 18px; } }
   </style>
 </head>
 <body>
 <div class="app">
-  <h1>FUB Assistant</h1>
-  <p class="subtitle">Type naturally — updates go straight to Follow Up Boss</p>
-  <div class="server-tag"><span class="dot"></span> Connected · fub-assistant.onrender.com</div>
-
-  <div class="examples-label">Try saying something like...</div>
-  <div class="chips">
-    <span class="chip" onclick="fillExample(this)">Add note to Connie Spencer: called today, waiting on contract</span>
-    <span class="chip" onclick="fillExample(this)">Update Jackson's stage to Active</span>
-    <span class="chip" onclick="fillExample(this)">Create task for Cooper: follow up Friday re: St. George property</span>
-    <span class="chip" onclick="fillExample(this)">Log call with Dawson, 10 mins, discussed financing options</span>
-    <span class="chip" onclick="fillExample(this)">Add note to Tyson: sent listing agreement, awaiting signature</span>
+  <div>
+    <h1>FUB Assistant</h1>
+    <p class="subtitle">Tell me who, what, and when — I'll handle the rest</p>
   </div>
+  <div class="server-tag"><span class="dot"></span> Live · fub-assistant.onrender.com</div>
 
-  <div class="compose">
-    <textarea id="msgInput" placeholder="Who did you talk to? What happened? Any tasks or follow-ups?" oninput="updateChar()"></textarea>
-    <div class="compose-footer">
-      <span class="char-count" id="charCount">0 characters</span>
-      <button class="send-btn" id="sendBtn" onclick="sendUpdate()">Send to FUB ↗</button>
-    </div>
+  <div class="chips">
+    <span class="chip" onclick="fill(this)">Add note to Connie Spencer: called today</span>
+    <span class="chip" onclick="fill(this)">Appointment with Jackson Friday at 2pm, send invite</span>
+    <span class="chip" onclick="fill(this)">New contact: John Smith, 801-555-1234, buyer</span>
+    <span class="chip" onclick="fill(this)">Add Cooper as collaborator on Connie Spencer</span>
+    <span class="chip" onclick="fill(this)">Task for Dawson: send contract Friday at 3pm, stage to Active</span>
   </div>
 
   <div id="log" class="log"></div>
+
+  <div class="compose-wrap">
+    <div class="compose">
+      <textarea id="input" placeholder="Type or dictate your update..." rows="1" oninput="resize(this)" onkeydown="onKey(event)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()">↑</button>
+    </div>
+  </div>
 </div>
 
 <script>
   const SERVER = 'https://fub-assistant.onrender.com';
 
-  function fillExample(el) {
-    document.getElementById('msgInput').value = el.textContent.trim();
-    updateChar();
-    document.getElementById('msgInput').focus();
+  function fill(el) {
+    const ta = document.getElementById('input');
+    ta.value = el.textContent.trim();
+    resize(ta);
+    ta.focus();
   }
 
-  function updateChar() {
-    const len = document.getElementById('msgInput').value.length;
-    document.getElementById('charCount').textContent = len + ' characters';
+  function resize(ta) {
+    ta.style.height = 'auto';
+    ta.style.height = ta.scrollHeight + 'px';
+  }
+
+  function onKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   }
 
   function timeStr() {
     return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  async function sendUpdate() {
-    const msg = document.getElementById('msgInput').value.trim();
-    if (!msg) return;
-
-    document.getElementById('sendBtn').disabled = true;
-
-    const logEl = document.getElementById('log');
-    const item = document.createElement('div');
-    item.className = 'log-item pending';
-    item.innerHTML = `
+  function addItem(msg) {
+    const log = document.getElementById('log');
+    const div = document.createElement('div');
+    div.className = 'log-item pending';
+    div.innerHTML = `
       <div class="log-top">
         <span class="log-msg">"${msg}"</span>
         <span class="log-time">${timeStr()}</span>
       </div>
-      <div style="margin-top:4px;font-size:12px;"><span class="spinner"></span> Sending...</div>`;
-    logEl.prepend(item);
+      <div><span class="spinner"></span> Updating FUB...</div>`;
+    log.prepend(div);
+    return div;
+  }
+
+  function renderSuccess(item, personName, wasCreated, results, summary) {
+    item.className = 'log-item success';
+    const actionsHtml = results.map(a => {
+      let detail = a.content;
+      if (a.date) detail += ` · ${a.date}`;
+      if (a.time) detail += ` at ${a.time}`;
+      if (a.invite) detail += ' · invite sent';
+      return `<div class="action-row"><span class="badge ${a.type}">${a.type}</span><span class="action-detail">${detail} ✓</span></div>`;
+    }).join('');
+    const newBadge = wasCreated ? '<span class="new-badge">new</span>' : '';
+    const existing = item.querySelector('.log-top').outerHTML;
+    item.innerHTML = existing +
+      `<div class="person-name">${personName}${newBadge}</div>` +
+      actionsHtml +
+      `<div class="summary">${summary}</div>`;
+  }
+
+  function renderError(item, msg, extraHtml) {
+    item.className = 'log-item error';
+    const existing = item.querySelector('.log-top').outerHTML;
+    item.innerHTML = existing + `<div class="error-msg">${msg}</div>` + (extraHtml || '');
+  }
+
+  async function send() {
+    const ta = document.getElementById('input');
+    const msg = ta.value.trim();
+    if (!msg) return;
+    document.getElementById('sendBtn').disabled = true;
+    const item = addItem(msg);
+    ta.value = '';
+    resize(ta);
 
     try {
       const r = await fetch(`${SERVER}/parse-and-update`, {
@@ -113,41 +153,57 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msg })
       });
-
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || 'Something went wrong');
 
-      const { personName, parsed, results } = data;
-
-      let actionsHtml = results.map(a => `
-        <div class="action-row">
-          <span class="badge ${a.type}">${a.type}</span>
-          <span class="action-detail">${a.content}${a.due ? ' · due ' + a.due : ''} ✓</span>
-        </div>`).join('');
-
-      item.className = 'log-item success';
-      item.innerHTML = `
-        <div class="log-top">
-          <span class="log-msg">"${msg}"</span>
-          <span class="log-time">${timeStr()}</span>
-        </div>
-        <div class="person-name">${personName}</div>
-        ${actionsHtml}
-        <div class="summary">${parsed.summary}</div>`;
-
+      if (r.status === 404 && data.suggestion === 'create_new') {
+        const existing = item.querySelector('.log-top').outerHTML;
+        item.className = 'log-item error';
+        item.innerHTML = existing + `
+          <div class="create-prompt">
+            <p>No contact found for <strong>${data.contact_name}</strong>. Create them?</p>
+            <input type="text" id="newPhone" placeholder="Phone (optional)" />
+            <input type="text" id="newEmail" placeholder="Email (optional)" />
+            <select id="newType" style="width:100%;padding:6px 10px;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;margin-bottom:6px;outline:none;">
+              <option value="Buyer">Buyer</option>
+              <option value="Seller">Seller</option>
+            </select>
+            <div class="btn-row">
+              <button class="btn-sm btn-primary" onclick="createContact('${data.contact_name}', '${msg}')">Create Contact</button>
+              <button class="btn-sm btn-cancel" onclick="this.closest('.log-item').remove()">Cancel</button>
+            </div>
+          </div>`;
+      } else if (!r.ok) {
+        throw new Error(data.error || 'Something went wrong');
+      } else {
+        renderSuccess(item, data.personName, data.wasCreated, data.results, data.parsed.summary);
+      }
     } catch(err) {
-      item.className = 'log-item error';
-      item.innerHTML = `
-        <div class="log-top">
-          <span class="log-msg">"${msg}"</span>
-          <span class="log-time">${timeStr()}</span>
-        </div>
-        <div class="error-msg">${err.message}</div>`;
+      renderError(item, err.message);
     }
-
-    document.getElementById('msgInput').value = '';
-    updateChar();
     document.getElementById('sendBtn').disabled = false;
+  }
+
+  async function createContact(name, originalMsg) {
+    const phone = document.getElementById('newPhone')?.value || '';
+    const email = document.getElementById('newEmail')?.value || '';
+    const type = document.getElementById('newType')?.value || 'Buyer';
+    try {
+      const r = await fetch(`${SERVER}/people`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone, email, type })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Could not create contact');
+      const log = document.getElementById('log');
+      const item = document.createElement('div');
+      item.className = 'log-item success';
+      item.innerHTML = `<div class="person-name">${name} <span class="new-badge">created</span></div><div class="summary">Contact created successfully.</div>`;
+      log.prepend(item);
+      document.querySelectorAll('.create-prompt').forEach(el => el.closest('.log-item').remove());
+    } catch(err) {
+      alert('Error: ' + err.message);
+    }
   }
 </script>
 </body>
