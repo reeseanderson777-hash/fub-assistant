@@ -167,8 +167,15 @@ Rules:
     let match = allPeople[0] || null;
     let personId, personName, wasCreated = false;
 
-    if (!match) {
-      if (parsed.create_new_contact) {
+  const msgLower = message.toLowerCase();
+const isNewContactRequest = parsed.create_new_contact ||
+  msgLower.includes('new contact') ||
+  msgLower.includes('create a new') ||
+  msgLower.includes('add a new') ||
+  msgLower.includes('create contact');
+
+if (!match) {
+  if (isNewContactRequest) {
         const newBody = {
           firstName,
           lastName,
