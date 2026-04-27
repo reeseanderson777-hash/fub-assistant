@@ -25,6 +25,19 @@ function fubHeaders() {
   };
 }
 
+// Utah timezone offset: MDT is UTC-6, MST is UTC-7
+// Using -6 for MDT (April-October), change to -7 for winter
+const UTC_OFFSET = -6;
+
+function toUTC(date, time) {
+  if (!date || !time) return null;
+  const [hours, minutes] = time.split(':').map(Number);
+  const utcHours = hours - UTC_OFFSET;
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCHours(utcHours, minutes, 0, 0);
+  return d.toISOString().slice(0, 19);
+}
+
 // Debug: list people
 app.get('/people', async (req, res) => {
   try {
@@ -156,7 +169,6 @@ Rules:
 
     if (!match) {
       if (parsed.create_new_contact) {
-        // Create new contact
         const newBody = {
           firstName,
           lastName,
@@ -205,7 +217,7 @@ Rules:
         const body = { personId, name: action.content };
         if (action.due_date) {
           body.dueDate = action.due_time
-            ? `${action.due_date}T${action.due_time}:00`
+            ? toUTC(action.due_date, action.due_time)
             : action.due_date;
         }
         const r = await fetch(`${FUB_BASE}/tasks`, {
@@ -215,45 +227,29 @@ Rules:
 
       } else if (action.type === 'appointment') {
         const startDateTime = action.due_date && action.due_time
-          ? `${action.due_date}T${action.due_time}:00`
-          : action.due_date ? `${action.due_date}T09:00:00` : null;
+          ? toUTC(action.due_date, action.due_time)
+          : action.due_date ? toUTC(action.due_date, '09:00') : null;
 
-        // Utah is MDT (UTC-6) in summer, MST (UTC-7) in winter
-const utcOffset = -6;
-
-function toUTC(date, time) {
-  if (!date || !time) return null;
-  const [hours, minutes] = time.split(':').map(Number);
-  const utcHours = hours - utcOffset;
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCHours(utcHours, minutes, 0, 0);
-  return d.toISOString().slice(0, 19);
-}
-
-const startDateTime = action.due_date && action.due_time
-  ? toUTC(action.due_date, action.due_time)
-  : action.due_date ? toUTC(action.due_date, '09:00') : null;
-
-const endDateTime = action.due_date && action.end_time
-  ? toUTC(action.due_date, action.end_time)
-  : startDateTime
-    ? (() => {
-        const d = new Date(startDateTime + 'Z');
-        d.setUTCHours(d.getUTCHours() + 1);
-        return d.toISOString().slice(0, 19);
-      })()
-    : null;
+        const endDateTime = action.due_date && action.end_time
+          ? toUTC(action.due_date, action.end_time)
+          : startDateTime
+            ? (() => {
+                const d = new Date(startDateTime + 'Z');
+                d.setUTCHours(d.getUTCHours() + 1);
+                return d.toISOString().slice(0, 19);
+              })()
+            : null;
 
         const apptBody = {
-  title: action.content,
-  start: startDateTime,
-  end: endDateTime,
-  timezone: 'America/Denver',
-  allDay: false,
-  invitees: [
-    { personId: personId, userId: null, relationshipId: null }
-  ]
-};
+          title: action.content,
+          start: startDateTime,
+          end: endDateTime,
+          timezone: 'America/Denver',
+          allDay: false,
+          invitees: [
+            { personId: personId, userId: null, relationshipId: null }
+          ]
+        };
 
         const r = await fetch(`${FUB_BASE}/appointments`, {
           method: 'POST', headers: fubHeaders(), body: JSON.stringify(apptBody)
