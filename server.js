@@ -307,7 +307,11 @@ if (!match) {
     res.status(500).json({ error: err.message });
   }
 });
-
+fetch('/debug-parse', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({message: 'create a new contact: buyer, ronald mcdonald, 1234567890'})
+}).then(r => r.json()).then(console.log)
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
 const PORT = process.env.PORT || 3000;
