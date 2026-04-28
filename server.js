@@ -58,11 +58,11 @@ app.get('/users', async (req, res) => {
 
 app.post('/people', async (req, res) => {
   try {
-    const { name, phone, email, type } = req.body;
+    const { name, phone, email } = req.body;
     const nameParts = name.trim().split(' ');
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
-    const body = { firstName, lastName, type: type || 'Buyer', source: 'Manual Entry' };
+    const body = { firstName, lastName, source: 'Manual Entry' };
     if (phone) body.phones = [{ value: phone, type: 'mobile' }];
     if (email) body.emails = [{ value: email, type: 'home' }];
     const r = await fetch(`${FUB_BASE}/people`, {
@@ -90,22 +90,7 @@ app.post('/debug-parse', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
         max_tokens: 1500,
-        system: `You are a CRM assistant for a real estate agent named Reese. Parse natural language CRM updates and return ONLY a JSON object. No preamble, no markdown, no backticks.
-
-Return this structure:
-{
-  "contact_name": "full name mentioned",
-  "create_new_contact": false,
-  "new_contact_phone": "phone number if creating new contact or null",
-  "new_contact_email": "email if creating new contact or null",
-  "new_contact_type": "Buyer or Seller if creating new contact or null",
-  "actions": [],
-  "summary": "one sentence summary"
-}
-
-Rules:
-- If the message says "new contact", "new lead", "add contact", "create contact", or "create a new", set create_new_contact to true
-- today is ${today}, current time is ${now}`,
+        system: `You are a CRM assistant. Parse and return ONLY JSON. today is ${today}, now is ${now}.`,
         messages: [{ role: 'user', content: message }]
       })
     });
@@ -149,7 +134,6 @@ Return this structure:
   "create_new_contact": false,
   "new_contact_phone": "phone number if creating new contact or null",
   "new_contact_email": "email if creating new contact or null",
-  "new_contact_type": "Buyer or Seller if creating new contact or null",
   "actions": [
     {
       "type": "note" | "task" | "appointment" | "status" | "call" | "collaborator",
@@ -220,24 +204,23 @@ Rules:
     if (!match) {
       if (isNewContactRequest) {
         const newBody = {
-  firstName,
-  lastName,
-  source: 'Manual Entry'
-};
+          firstName,
+          lastName,
+          source: 'Manual Entry'
         };
         if (parsed.new_contact_phone) newBody.phones = [{ value: parsed.new_contact_phone, type: 'mobile' }];
         if (parsed.new_contact_email) newBody.emails = [{ value: parsed.new_contact_email, type: 'home' }];
         const createRes = await fetch(`${FUB_BASE}/people`, {
-  method: 'POST', headers: fubHeaders(), body: JSON.stringify(newBody)
-});
-const created = await createRes.json();
-console.log('FUB create response:', JSON.stringify(created));
-if (!createRes.ok) {
-  return res.status(500).json({ error: 'FUB create failed: ' + JSON.stringify(created) });
-}
-personId = created.id || created.person?.id;
-personName = parsed.contact_name;
-wasCreated = true;
+          method: 'POST', headers: fubHeaders(), body: JSON.stringify(newBody)
+        });
+        const created = await createRes.json();
+        console.log('FUB create response:', JSON.stringify(created));
+        if (!createRes.ok) {
+          return res.status(500).json({ error: 'FUB create failed: ' + JSON.stringify(created) });
+        }
+        personId = created.id || created.person?.id;
+        personName = parsed.contact_name;
+        wasCreated = true;
       } else {
         return res.status(404).json({
           error: `No contact found for "${parsed.contact_name}". Try using their full name, or say "new contact: [name], [phone]" to create them.`,
