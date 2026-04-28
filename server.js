@@ -249,9 +249,10 @@ Rules:
       } else if (action.type === 'task') {
         const body = { personId, name: action.content };
         if (action.due_date) {
-          body.dueDate = action.due_time
-            ? toUTC(action.due_date, action.due_time)
-            : action.due_date;
+          body.dueDate = action.due_date;
+          if (action.due_time) {
+            body.dueDateTime = toUTC(action.due_date, action.due_time);
+          }
         }
         const r = await fetch(`${FUB_BASE}/tasks`, {
           method: 'POST', headers: fubHeaders(), body: JSON.stringify(body)
@@ -306,9 +307,7 @@ Rules:
         if (collab) {
           const r = await fetch(`${FUB_BASE}/people/${personId}`, {
             method: 'PUT', headers: fubHeaders(),
-            body: JSON.stringify({
-              collaborators: [{ userId: collab.id }]
-            })
+            body: JSON.stringify({ collaborators: [{ userId: collab.id }] })
           });
           const collabData = await r.json();
           console.log('Collaborator response:', JSON.stringify(collabData));
