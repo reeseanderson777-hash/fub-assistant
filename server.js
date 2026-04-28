@@ -228,12 +228,16 @@ Rules:
         if (parsed.new_contact_phone) newBody.phones = [{ value: parsed.new_contact_phone, type: 'mobile' }];
         if (parsed.new_contact_email) newBody.emails = [{ value: parsed.new_contact_email, type: 'home' }];
         const createRes = await fetch(`${FUB_BASE}/people`, {
-          method: 'POST', headers: fubHeaders(), body: JSON.stringify(newBody)
-        });
-        const created = await createRes.json();
-        personId = created.id || created.person?.id;
-        personName = parsed.contact_name;
-        wasCreated = true;
+  method: 'POST', headers: fubHeaders(), body: JSON.stringify(newBody)
+});
+const created = await createRes.json();
+console.log('FUB create response:', JSON.stringify(created));
+if (!createRes.ok) {
+  return res.status(500).json({ error: 'FUB create failed: ' + JSON.stringify(created) });
+}
+personId = created.id || created.person?.id;
+personName = parsed.contact_name;
+wasCreated = true;
       } else {
         return res.status(404).json({
           error: `No contact found for "${parsed.contact_name}". Try using their full name, or say "new contact: [name], [phone]" to create them.`,
