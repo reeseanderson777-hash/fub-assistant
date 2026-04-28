@@ -220,10 +220,10 @@ Rules:
     if (!match) {
       if (isNewContactRequest) {
         const newBody = {
-          firstName,
-          lastName,
-          type: parsed.new_contact_type || 'Buyer',
-          source: 'Manual Entry'
+  firstName,
+  lastName,
+  source: 'Manual Entry'
+};
         };
         if (parsed.new_contact_phone) newBody.phones = [{ value: parsed.new_contact_phone, type: 'mobile' }];
         if (parsed.new_contact_email) newBody.emails = [{ value: parsed.new_contact_email, type: 'home' }];
