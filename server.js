@@ -302,19 +302,21 @@ Rules:
         results.push({ type: 'call', ok: r.ok, content: action.content });
 
       } else if (action.type === 'collaborator') {
-  const collab = allUsers.find(u => u.name.toLowerCase().includes(action.collaborator_name.toLowerCase()));
-  if (collab) {
-    const r = await fetch(`${FUB_BASE}/people/${personId}/collaborators`, {
-      method: 'POST', headers: fubHeaders(),
-      body: JSON.stringify({ userId: collab.id })
-    });
-    const collabData = await r.json();
-    console.log('Collaborator response:', JSON.stringify(collabData));
-    results.push({ type: 'collaborator', ok: r.ok, content: collab.name });
-  } else {
-    results.push({ type: 'collaborator', ok: false, content: `User "${action.collaborator_name}" not found` });
-  }
-}
+        const collab = allUsers.find(u => u.name.toLowerCase().includes(action.collaborator_name.toLowerCase()));
+        if (collab) {
+          const r = await fetch(`${FUB_BASE}/people/${personId}`, {
+            method: 'PUT', headers: fubHeaders(),
+            body: JSON.stringify({
+              collaborators: [{ userId: collab.id }]
+            })
+          });
+          const collabData = await r.json();
+          console.log('Collaborator response:', JSON.stringify(collabData));
+          results.push({ type: 'collaborator', ok: r.ok, content: collab.name });
+        } else {
+          results.push({ type: 'collaborator', ok: false, content: `User "${action.collaborator_name}" not found` });
+        }
+      }
     }
 
     res.json({ success: true, personName, wasCreated, parsed, results });
